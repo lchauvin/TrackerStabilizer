@@ -59,5 +59,11 @@ void qSlicerTrackerStabilizerModuleWidget::setup()
   Q_D(qSlicerTrackerStabilizerModuleWidget);
   d->setupUi(this);
   this->Superclass::setup();
+
+  if (d->FilteringWidget)
+    {
+    connect(this, SIGNAL(mrmlSceneChanged(vtkMRMLScene*)),
+	    d->FilteringWidget, SLOT(setMRMLScene(vtkMRMLScene*)));
+    }
 }
 

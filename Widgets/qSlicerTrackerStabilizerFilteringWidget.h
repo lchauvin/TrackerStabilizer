@@ -51,12 +51,14 @@ class Q_SLICER_MODULE_TRACKERSTABILIZER_WIDGETS_EXPORT qSlicerTrackerStabilizerF
   qSlicerTrackerStabilizerFilteringWidget(QWidget *parent=0);
   virtual ~qSlicerTrackerStabilizerFilteringWidget();
 
+  /// Apply a low-pass filter on the input and return filtered transform in the output
+  void applyFilter(vtkMRMLLinearTransformNode* input, vtkMRMLLinearTransformNode* output);
+
   protected slots:
     virtual void setMRMLScene(vtkMRMLScene *newScene);
     void onInputNodeActivated(vtkMRMLNode* newInputNode);
     void onOutputNodeActivated(vtkMRMLNode* newOutputNode);
     void onInputTransformModified();
-    void applyFiltering(vtkMRMLLinearTransformNode* input, vtkMRMLLinearTransformNode* output);
 
  protected:
   QScopedPointer<qSlicerTrackerStabilizerFilteringWidgetPrivate> d_ptr;

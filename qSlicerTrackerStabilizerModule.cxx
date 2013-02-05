@@ -64,7 +64,7 @@ qSlicerTrackerStabilizerModule::~qSlicerTrackerStabilizerModule()
 //-----------------------------------------------------------------------------
 QString qSlicerTrackerStabilizerModule::helpText()const
 {
-  return "This is a loadable module bundled in an extension";
+  return "This loadable module is a tool to filter, using a low-pass filter, data coming from trackers";
 }
 
 //-----------------------------------------------------------------------------
