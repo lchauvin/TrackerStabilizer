@@ -3,12 +3,12 @@ cmake_minimum_required(VERSION 2.8.7)
 #-----------------------------------------------------------------------------
 if(NOT Slicer_SOURCE_DIR)
   set(EXTENSION_NAME TrackerStabilizer)
-  set(EXTENSION_HOMEPAGE "http://www.slicer.org/slicerWiki/index.php/Documentation/4.2/Extensions/TrackerStabilizer")
+  set(EXTENSION_HOMEPAGE "http://www.slicer.org/slicerWiki/index.php/Documentation/Nightly/Extensions/TrackerStabilizer")
   set(EXTENSION_CATEGORY "IGT")
   set(EXTENSION_CONTRIBUTORS "Laurent Chauvin (SNR), Jayender Jagadeesan (SPL)")
   set(EXTENSION_DESCRIPTION "This loadable module is a tool to filter, using a low-pass filter, data coming from trackers")
-  set(EXTENSION_ICONURL "http://viewvc.slicer.org/viewvc.cgi/Slicer4/trunk/Extensions/Testing/TrackerStabilizer/Resources/Icons/TrackerStabilizer.png?revision=19437&view=co")
-  set(EXTENSION_SCREENSHOTURLS "http://wiki.slicer.org/slicerWiki/images/4/42/Slicer-r19441-TrackerStabilizer-screenshot.png")
+  set(EXTENSION_ICONURL "http://www.slicer.org/slicerWiki/images/2/22/TrackerStabilizer.png")
+  set(EXTENSION_SCREENSHOTURLS "http://www.slicer.org/slicerWiki/images/7/7c/Slicer4-TrackerStabilizer-GUI.png")
 endif()
 
 #-----------------------------------------------------------------------------
