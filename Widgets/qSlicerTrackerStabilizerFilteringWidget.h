@@ -2,7 +2,7 @@
 
   Program: 3D Slicer
 
-  Copyright (c) Kitware Inc.
+  Portions (c) Copyright Brigham and Women's Hospital (BWH) All Rights Reserved.
 
   See COPYRIGHT.txt
   or http://www.slicer.org/copyright/copyright.txt for details.
@@ -13,10 +13,13 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 
-  This file was originally developed by Laurent Chauvin (SNR), Jayender Jagadeesan (SPL)
-  and was partially funded by NIH grant 3P41RR013218-12S1
-
-  ==============================================================================*/
+  This file was originally developed by Laurent Chauvin and
+  Jayender Jagadeesan, Brigham and Women's Hospital.
+  The project was supported by grants 5P01CA067165,
+  5R01CA124377, 5R01CA138586, 2R44DE019322, 7R01CA124377,
+  5R42CA137886, 8P41EB015898, 3P41RR013218
+ 
+==============================================================================*/
 
 #ifndef __qSlicerTrackerStabilizerFilteringWidget_h
 #define __qSlicerTrackerStabilizerFilteringWidget_h
