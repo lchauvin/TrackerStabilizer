@@ -27,6 +27,7 @@
 
 // VTK includes
 #include <vtkNew.h>
+#include <vtkObjectFactory.h>
 
 // STD includes
 #include <cassert>
