@@ -25,6 +25,8 @@
 #include "qSlicerTrackerStabilizerFilteringWidget.h"
 #include "ui_qSlicerTrackerStabilizerFilteringWidget.h"
 
+#include <vtkMath.h>
+
 //-----------------------------------------------------------------------------
 /// \ingroup Slicer_QtModules_TrackerStabilizer
 class qSlicerTrackerStabilizerFilteringWidgetPrivate
@@ -182,92 +184,129 @@ void qSlicerTrackerStabilizerFilteringWidget
     }
 }
 
+//----------------------------------------------------------------------------
+// Spherical linear interpolation between two rotation quaternions.
+// t is a value between 0 and 1 that interpolates between from and to (t=0 means the results is the same as "from").
+// Precondition: no aliasing problems to worry about ("result" can be "from" or "to" param).
+// Parameters: adjustSign - If true, then slerp will operate by adjusting the sign of the slerp to take shortest path. True is recommended, otherwise the interpolation sometimes give unexpected results. 
+// References: From Adv Anim and Rendering Tech. Pg 364
+void Slerp(double *result, double t, double *from, double *to, bool adjustSign = true)   
+{
+  const double* p = from; // just an alias to match q
+
+  // calc cosine theta
+  double cosom = from[0]*to[0]+from[1]*to[1]+from[2]*to[2]+from[3]*to[3]; // dot( from, to )
+
+  // adjust signs (if necessary)
+  double q[4];
+  if (adjustSign && (cosom < (double)0.0))
+  {
+    cosom = -cosom;
+    q[0] = -to[0];   // Reverse all signs
+    q[1] = -to[1];
+    q[2] = -to[2];
+    q[3] = -to[3];
+  }
+  else
+  {
+    q[0] = to[0];
+    q[1] = to[1];
+    q[2] = to[2];
+    q[3] = to[3];
+  }
+
+  // Calculate coefficients
+  double sclp, sclq;
+  if (((double)1.0 - cosom) > (double)0.0001) // 0.0001 -> some epsillon
+  {
+    // Standard case (slerp)
+    double omega, sinom;
+    omega = acos( cosom ); // extract theta from dot product's cos theta
+    sinom = sin( omega );
+    sclp  = sin( ((double)1.0 - t) * omega ) / sinom;
+    sclq  = sin( t * omega ) / sinom;
+  }
+  else
+  {
+    // Very close, do linear interp (because it's faster)
+    sclp = (double)1.0 - t;
+    sclq = t;
+  }
+
+  for (int i=0; i<4; i++)
+  {
+    result[i] = sclp * p[i] + sclq * q[i];
+  }
+}
+
+//----------------------------------------------------------------------------
+// Interpolate the matrix for the given timestamp from the two nearest
+// transforms in the buffer.
+// The rotation is interpolated with SLERP interpolation, and the
+// position is interpolated with linear interpolation.
+// The flags correspond to the closest element.
+void GetInterpolatedTransform(vtkMatrix4x4* itemAmatrix, vtkMatrix4x4* itemBmatrix, double itemAweight, double itemBweight, vtkMatrix4x4* interpolatedMatrix)
+{
+  double itemAweightNormalized=itemAweight/(itemAweight+itemBweight);
+  double itemBweightNormalized=itemBweight/itemAweight;
+
+  double matrixA[3][3]={{0,0,0},{0,0,0},{0,0,0}};
+  for (int i = 0; i < 3; i++)
+  {
+    matrixA[i][0] = itemAmatrix->GetElement(i,0);
+    matrixA[i][1] = itemAmatrix->GetElement(i,1);
+    matrixA[i][2] = itemAmatrix->GetElement(i,2);
+  }  
+
+  double matrixB[3][3] = {{0,0,0}, {0,0,0}, {0,0,0}};
+  for (int i = 0; i < 3; i++)
+  {
+    matrixB[i][0] = itemBmatrix->GetElement(i,0);
+    matrixB[i][1] = itemBmatrix->GetElement(i,1);
+    matrixB[i][2] = itemBmatrix->GetElement(i,2);
+  }
+
+  double matrixAquat[4]= {0,0,0,0};
+  vtkMath::Matrix3x3ToQuaternion(matrixA, matrixAquat);
+  double matrixBquat[4]= {0,0,0,0};
+  vtkMath::Matrix3x3ToQuaternion(matrixB, matrixBquat);
+  double interpolatedRotationQuat[4]= {0,0,0,0};
+  Slerp(interpolatedRotationQuat, itemBweightNormalized, matrixAquat, matrixBquat);
+  double interpolatedRotation[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+  vtkMath::QuaternionToMatrix3x3(interpolatedRotationQuat, interpolatedRotation);
+
+  for (int i = 0; i < 3; i++)
+  {
+    interpolatedMatrix->Element[i][0] = interpolatedRotation[i][0];
+    interpolatedMatrix->Element[i][1] = interpolatedRotation[i][1];
+    interpolatedMatrix->Element[i][2] = interpolatedRotation[i][2];
+    interpolatedMatrix->Element[i][3] = itemAmatrix->GetElement(i,3)*itemAweightNormalized + itemBmatrix->GetElement(i,3)*itemBweightNormalized;
+  }
+}
+
 //-----------------------------------------------------------------------------
 void qSlicerTrackerStabilizerFilteringWidget
 ::applyFilter(vtkMRMLLinearTransformNode* input, vtkMRMLLinearTransformNode* output)
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
 
-  double unfiltPosOr[6], filtPosOr[6];
-  double dt = 0.015; // 15ms
+  // Compute weights (low-pass filter with w_cutoff frequency)
+  const double dt = 0.015; // 15ms TODO: get it from timestamp
+  const double cutoff_frequency = d->FilteringValueWidget->value();
+  const double weightPrevious = 1;
+  const double weightCurrent = dt*cutoff_frequency; 
 
-  // Get Matrixes
-  vtkSmartPointer<vtkMatrix4x4> inputMatrix =
-    input->GetMatrixTransformToParent();
+  // Get matrices
+  vtkSmartPointer<vtkMatrix4x4> matrixCurrent = vtkSmartPointer<vtkMatrix4x4>::New();
+  input->GetMatrixTransformToParent(matrixCurrent);
 
-  vtkSmartPointer<vtkMatrix4x4> outputMatrix =
-    output->GetMatrixTransformToParent();
-
-  unfiltPosOr[0] = inputMatrix->GetElement(0,3);
-  unfiltPosOr[1] = inputMatrix->GetElement(1,3);
-  unfiltPosOr[2] = inputMatrix->GetElement(2,3);
-
-  // Unfiltered Beta
-  double unfilteredRadius = pow(pow(inputMatrix->GetElement(0,0),2)+pow(inputMatrix->GetElement(1,0),2),0.5);
-  unfiltPosOr[4] =
-    atan2(-inputMatrix->GetElement(2,0), unfilteredRadius); 
-
-  // Unfiltered Gamma
-  unfiltPosOr[5] =
-    atan2(inputMatrix->GetElement(2,1)/cos(unfiltPosOr[4]),inputMatrix->GetElement(2,2)/cos(unfiltPosOr[4]));
-
-  // Unfiltered Alpha
-  unfiltPosOr[3] =
-    atan2(inputMatrix->GetElement(1,0)/cos(unfiltPosOr[4]),inputMatrix->GetElement(0,0)/cos(unfiltPosOr[4]));
-
-  filtPosOr[0] = outputMatrix->GetElement(0,3);
-  filtPosOr[1] = outputMatrix->GetElement(1,3);
-  filtPosOr[2] = outputMatrix->GetElement(2,3);
-
-  // Accumulated Beta
-  double filteredRadius = pow(pow(outputMatrix->GetElement(0,0),2)+pow(outputMatrix->GetElement(1,0),2),0.5);
-  filtPosOr[4] =
-    atan2(-outputMatrix->GetElement(2,0), filteredRadius);
-
-  // Accumulated Gamma
-  filtPosOr[5] =
-    atan2(outputMatrix->GetElement(2,1)/cos(filtPosOr[4]),outputMatrix->GetElement(2,2)/cos(filtPosOr[4]));
+  vtkSmartPointer<vtkMatrix4x4> matrixPrevious = vtkSmartPointer<vtkMatrix4x4>::New();
+  output->GetMatrixTransformToParent(matrixPrevious);
   
-  // Accumulated Alpha
-  filtPosOr[3] =
-    atan2(outputMatrix->GetElement(1,0)/cos(filtPosOr[4]),outputMatrix->GetElement(0,0)/cos(filtPosOr[4]));
-
-  double cutoff_frequency = d->FilteringValueWidget->value();
-  for (int i = 0; i < 6; i++)
-    {
-    // Low pass filter with w_cutoff frequency
-    filtPosOr[i]  = (filtPosOr[i] + dt*cutoff_frequency*unfiltPosOr[i])/(1 + cutoff_frequency*dt);
-    }
-
-  // Alpha, Beta and Gamma angles
-  double a = filtPosOr[3];
-  double b  = filtPosOr[4];
-  double g = filtPosOr[5];
-
-  // Create the transformation again
-  vtkSmartPointer<vtkMatrix4x4> TransformationMatrix =
-    vtkSmartPointer<vtkMatrix4x4> ::New();
-
-  TransformationMatrix->SetElement(0,0,cos(a)*cos(b));
-  TransformationMatrix->SetElement(0,1,cos(a)*sin(b)*sin(g)-sin(a)*cos(g));
-  TransformationMatrix->SetElement(0,2,cos(a)*sin(b)*cos(g)+sin(a)*sin(g));
-  TransformationMatrix->SetElement(0,3,filtPosOr[0]);
-
-  TransformationMatrix->SetElement(1,0,sin(a)*cos(b));
-  TransformationMatrix->SetElement(1,1,sin(a)*sin(b)*sin(g)+cos(a)*cos(g));
-  TransformationMatrix->SetElement(1,2,sin(a)*sin(b)*cos(g)-cos(a)*sin(g));
-  TransformationMatrix->SetElement(1,3,filtPosOr[1]);
-
-  TransformationMatrix->SetElement(2,0,-sin(b));
-  TransformationMatrix->SetElement(2,1,cos(b)*sin(g));
-  TransformationMatrix->SetElement(2,2,cos(b)*cos(g));
-  TransformationMatrix->SetElement(2,3,filtPosOr[2]);
-
-  TransformationMatrix->SetElement(3,0,0);
-  TransformationMatrix->SetElement(3,1,0);
-  TransformationMatrix->SetElement(3,2,0);
-  TransformationMatrix->SetElement(3,3,1);
+  // Compute interpolated matrix
+  vtkSmartPointer<vtkMatrix4x4> matrixNew = vtkSmartPointer<vtkMatrix4x4>::New();
+  GetInterpolatedTransform(matrixPrevious, matrixCurrent, weightPrevious, weightCurrent, matrixNew);
 
   // Setting the TransformNode
-  output->SetAndObserveMatrixTransformToParent(TransformationMatrix);
+  output->SetAndObserveMatrixTransformToParent(matrixNew);
 }
