@@ -25,6 +25,7 @@
 #define __qSlicerTrackerStabilizerFilteringWidget_h
 
 // Qt includes
+#include <QTimer>
 #include <QWidget>
 #include <ctkVTKObject.h>
 
@@ -61,7 +62,9 @@ class Q_SLICER_MODULE_TRACKERSTABILIZER_WIDGETS_EXPORT qSlicerTrackerStabilizerF
     virtual void setMRMLScene(vtkMRMLScene *newScene);
     void onInputNodeActivated(vtkMRMLNode* newInputNode);
     void onOutputNodeActivated(vtkMRMLNode* newOutputNode);
+    void onRefreshTimeout();
     void onInputTransformModified();
+    void onFilteringToggled(bool filter);
 
  protected:
   QScopedPointer<qSlicerTrackerStabilizerFilteringWidgetPrivate> d_ptr;

@@ -36,6 +36,7 @@ protected:
 
   vtkMRMLLinearTransformNode* InputTransformNode;
   vtkMRMLLinearTransformNode* OutputTransformNode;
+  QTimer* RefreshTimer;
 
 public:
   qSlicerTrackerStabilizerFilteringWidgetPrivate(
@@ -51,6 +52,7 @@ qSlicerTrackerStabilizerFilteringWidgetPrivate
 {
   this->InputTransformNode = NULL;
   this->OutputTransformNode = NULL;
+  this->RefreshTimer = new QTimer();
 }
 
 // --------------------------------------------------------------------------
@@ -71,6 +73,12 @@ qSlicerTrackerStabilizerFilteringWidget
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
   d->setupUi(this);
+
+  connect(d->RefreshTimer, SIGNAL(timeout()),
+	  this, SLOT(onRefreshTimeout()));
+
+  connect(d->FilteringBox, SIGNAL(toggled(bool)),
+	  this, SLOT(onFilteringToggled(bool)));
 }
 
 //-----------------------------------------------------------------------------
@@ -88,14 +96,14 @@ void qSlicerTrackerStabilizerFilteringWidget
   if (d->InputTransformWidget)
     {
     d->InputTransformWidget->setMRMLScene(newScene);
-    connect(d->InputTransformWidget, SIGNAL(currentNodeChanged(vtkMRMLNode*)),
+    connect(d->InputTransformWidget, SIGNAL(nodeActivated(vtkMRMLNode*)),
             this, SLOT(onInputNodeActivated(vtkMRMLNode*)));
     }
 
   if (d->OutputTransformWidget)
     {
     d->OutputTransformWidget->setMRMLScene(newScene);
-    connect(d->OutputTransformWidget, SIGNAL(currentNodeChanged(vtkMRMLNode*)),
+    connect(d->OutputTransformWidget, SIGNAL(nodeActivated(vtkMRMLNode*)),
             this, SLOT(onOutputNodeActivated(vtkMRMLNode*)));
     }
 }
@@ -106,6 +114,11 @@ void qSlicerTrackerStabilizerFilteringWidget
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
 
+  if (newInputNode == d->InputTransformNode)
+    {
+    return;
+    }
+
   // Set new input node
   vtkMRMLLinearTransformNode* newTransformNode = 
     vtkMRMLLinearTransformNode::SafeDownCast(newInputNode);
@@ -115,14 +128,21 @@ void qSlicerTrackerStabilizerFilteringWidget
     qvtkDisconnect(d->InputTransformNode, vtkMRMLLinearTransformNode::TransformModifiedEvent,
                    this, SLOT(onInputTransformModified()));
 
-    d->InputTransformNode = newTransformNode;
-
-    if (d->OutputTransformNode && d->InputTransformNode)
+    if (newTransformNode == d->OutputTransformNode)
       {
-      // If InputNode is changed, we set OutputNode to InputNode 
-      // to restart filtering, avoiding filtering with 2 different inputs
-      d->OutputTransformNode->GetMatrixTransformToParent()
-        ->DeepCopy(d->InputTransformNode->GetMatrixTransformToParent());
+      // Output node cannot be used as input node
+      d->InputTransformWidget->setCurrentNode(NULL);
+      }
+    else
+      {
+      d->InputTransformNode = newTransformNode;
+      if (d->OutputTransformNode)
+	{
+	vtkSmartPointer<vtkMatrix4x4> inputMatrix =
+	  vtkSmartPointer<vtkMatrix4x4>::New();
+	d->InputTransformNode->GetMatrixTransformToWorld(inputMatrix.GetPointer());
+	d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
+	}
       }
 
     qvtkConnect(d->InputTransformNode, vtkMRMLLinearTransformNode::TransformModifiedEvent,
@@ -136,26 +156,46 @@ void qSlicerTrackerStabilizerFilteringWidget
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
 
+  if (newOutputNode == d->OutputTransformNode)
+    {
+    return;
+    }
+
   // Set new output node
   vtkMRMLLinearTransformNode* newTransformNode = 
     vtkMRMLLinearTransformNode::SafeDownCast(newOutputNode);
 
   if (newTransformNode)
     {
-    if (newTransformNode != d->InputTransformNode)
+    if (newTransformNode == d->InputTransformNode)
       {
-      d->OutputTransformNode = newTransformNode;
+      // Input node cannot be used as output node
+      d->OutputTransformWidget->setCurrentNode(NULL);
       }
     else
       {
-      d->InputTransformWidget->setCurrentNode(d->OutputTransformNode);
+      d->OutputTransformNode = newTransformNode;
       }
     }
 
+  // Initialize output node
   if (d->OutputTransformNode)
     {
-    d->OutputTransformNode->GetMatrixTransformToParent()->Identity();
+    vtkSmartPointer<vtkMatrix4x4> identityMatrix =
+      vtkSmartPointer<vtkMatrix4x4>::New();
+    identityMatrix->Identity();
+
+    d->OutputTransformNode->SetMatrixTransformToParent(identityMatrix);
     }
+}
+
+//-----------------------------------------------------------------------------
+void qSlicerTrackerStabilizerFilteringWidget
+::onRefreshTimeout()
+{
+  Q_D(qSlicerTrackerStabilizerFilteringWidget);
+
+  this->applyFilter(d->InputTransformNode, d->OutputTransformNode);
 }
 
 //-----------------------------------------------------------------------------
@@ -164,20 +204,43 @@ void qSlicerTrackerStabilizerFilteringWidget
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
 
-  if (d->FilteringBox && d->InputTransformNode && d->OutputTransformNode)
+  // Update Output transform when filter is deactivated
+  if (d->FilteringBox->isChecked())
     {
-    if (d->FilteringBox->isChecked() && d->FilteringValueWidget)
+    return;
+    }
+
+  if (!d->InputTransformNode || !d->OutputTransformNode)
+    {
+    return;
+    }
+
+  vtkSmartPointer<vtkMatrix4x4> inputMatrix =
+    vtkSmartPointer<vtkMatrix4x4>::New();
+  d->InputTransformNode->GetMatrixTransformToParent(inputMatrix.GetPointer());
+  d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
+}
+
+//-----------------------------------------------------------------------------
+void qSlicerTrackerStabilizerFilteringWidget
+::onFilteringToggled(bool filter)
+{
+  Q_D(qSlicerTrackerStabilizerFilteringWidget);
+
+  if (filter)
+    {
+    d->RefreshTimer->start(50);
+    }
+  else
+    {
+    d->RefreshTimer->stop();
+
+    if (d->InputTransformNode && d->OutputTransformNode)
       {
-      this->applyFilter(d->InputTransformNode, d->OutputTransformNode);
-      }
-    else
-      {
-      // No filter applied. Just change pointer to avoid copying data.
-      vtkMatrix4x4* inputMatrixToParent = d->InputTransformNode->GetMatrixTransformToParent();
-      if (inputMatrixToParent)
-        {
-        d->OutputTransformNode->SetAndObserveMatrixTransformToParent(inputMatrixToParent);
-        }
+      vtkSmartPointer<vtkMatrix4x4> inputMatrix =
+	vtkSmartPointer<vtkMatrix4x4>::New();
+      d->InputTransformNode->GetMatrixTransformToWorld(inputMatrix.GetPointer());
+      d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
       }
     }
 }
@@ -188,15 +251,22 @@ void qSlicerTrackerStabilizerFilteringWidget
 {
   Q_D(qSlicerTrackerStabilizerFilteringWidget);
 
+  if (!input || !output)
+    {
+    return;
+    }
+
   double unfiltPosOr[6], filtPosOr[6];
   double dt = 0.015; // 15ms
 
   // Get Matrixes
   vtkSmartPointer<vtkMatrix4x4> inputMatrix =
-    input->GetMatrixTransformToParent();
+    vtkSmartPointer<vtkMatrix4x4>::New();
+  input->GetMatrixTransformToParent(inputMatrix);
 
   vtkSmartPointer<vtkMatrix4x4> outputMatrix =
-    output->GetMatrixTransformToParent();
+    vtkSmartPointer<vtkMatrix4x4>::New();
+  output->GetMatrixTransformToParent(outputMatrix);
 
   unfiltPosOr[0] = inputMatrix->GetElement(0,3);
   unfiltPosOr[1] = inputMatrix->GetElement(1,3);
@@ -245,29 +315,29 @@ void qSlicerTrackerStabilizerFilteringWidget
   double g = filtPosOr[5];
 
   // Create the transformation again
-  vtkSmartPointer<vtkMatrix4x4> TransformationMatrix =
+  vtkSmartPointer<vtkMatrix4x4> transformationMatrix =
     vtkSmartPointer<vtkMatrix4x4> ::New();
 
-  TransformationMatrix->SetElement(0,0,cos(a)*cos(b));
-  TransformationMatrix->SetElement(0,1,cos(a)*sin(b)*sin(g)-sin(a)*cos(g));
-  TransformationMatrix->SetElement(0,2,cos(a)*sin(b)*cos(g)+sin(a)*sin(g));
-  TransformationMatrix->SetElement(0,3,filtPosOr[0]);
+  transformationMatrix->SetElement(0,0,cos(a)*cos(b));
+  transformationMatrix->SetElement(0,1,cos(a)*sin(b)*sin(g)-sin(a)*cos(g));
+  transformationMatrix->SetElement(0,2,cos(a)*sin(b)*cos(g)+sin(a)*sin(g));
+  transformationMatrix->SetElement(0,3,filtPosOr[0]);
 
-  TransformationMatrix->SetElement(1,0,sin(a)*cos(b));
-  TransformationMatrix->SetElement(1,1,sin(a)*sin(b)*sin(g)+cos(a)*cos(g));
-  TransformationMatrix->SetElement(1,2,sin(a)*sin(b)*cos(g)-cos(a)*sin(g));
-  TransformationMatrix->SetElement(1,3,filtPosOr[1]);
+  transformationMatrix->SetElement(1,0,sin(a)*cos(b));
+  transformationMatrix->SetElement(1,1,sin(a)*sin(b)*sin(g)+cos(a)*cos(g));
+  transformationMatrix->SetElement(1,2,sin(a)*sin(b)*cos(g)-cos(a)*sin(g));
+  transformationMatrix->SetElement(1,3,filtPosOr[1]);
 
-  TransformationMatrix->SetElement(2,0,-sin(b));
-  TransformationMatrix->SetElement(2,1,cos(b)*sin(g));
-  TransformationMatrix->SetElement(2,2,cos(b)*cos(g));
-  TransformationMatrix->SetElement(2,3,filtPosOr[2]);
+  transformationMatrix->SetElement(2,0,-sin(b));
+  transformationMatrix->SetElement(2,1,cos(b)*sin(g));
+  transformationMatrix->SetElement(2,2,cos(b)*cos(g));
+  transformationMatrix->SetElement(2,3,filtPosOr[2]);
 
-  TransformationMatrix->SetElement(3,0,0);
-  TransformationMatrix->SetElement(3,1,0);
-  TransformationMatrix->SetElement(3,2,0);
-  TransformationMatrix->SetElement(3,3,1);
+  transformationMatrix->SetElement(3,0,0);
+  transformationMatrix->SetElement(3,1,0);
+  transformationMatrix->SetElement(3,2,0);
+  transformationMatrix->SetElement(3,3,1);
 
   // Setting the TransformNode
-  output->SetAndObserveMatrixTransformToParent(TransformationMatrix);
+  output->SetMatrixTransformToParent(transformationMatrix);
 }
