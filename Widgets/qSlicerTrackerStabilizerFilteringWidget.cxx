@@ -122,9 +122,10 @@ void qSlicerTrackerStabilizerFilteringWidget
     if (d->OutputTransformNode && d->InputTransformNode)
       {
       // If InputNode is changed, we set OutputNode to InputNode 
-      // to restart filtering, avoiding filtering with 2 different inputs
-      d->OutputTransformNode->GetMatrixTransformToParent()
-        ->DeepCopy(d->InputTransformNode->GetMatrixTransformToParent());
+      // to initialize filtering
+      vtkSmartPointer<vtkMatrix4x4> matrixCurrent = vtkSmartPointer<vtkMatrix4x4>::New();
+      d->InputTransformNode->GetMatrixTransformToParent(matrixCurrent);  
+      d->OutputTransformNode->SetMatrixTransformToParent(matrixCurrent);
       }
 
     qvtkConnect(d->InputTransformNode, vtkMRMLLinearTransformNode::TransformModifiedEvent,
@@ -248,7 +249,7 @@ void Slerp(double *result, double t, double *from, double *to, bool adjustSign =
 void GetInterpolatedTransform(vtkMatrix4x4* itemAmatrix, vtkMatrix4x4* itemBmatrix, double itemAweight, double itemBweight, vtkMatrix4x4* interpolatedMatrix)
 {
   double itemAweightNormalized=itemAweight/(itemAweight+itemBweight);
-  double itemBweightNormalized=itemBweight/itemAweight;
+  double itemBweightNormalized=itemBweight/(itemAweight+itemBweight);
 
   double matrixA[3][3]={{0,0,0},{0,0,0},{0,0,0}};
   for (int i = 0; i < 3; i++)
@@ -308,5 +309,5 @@ void qSlicerTrackerStabilizerFilteringWidget
   GetInterpolatedTransform(matrixPrevious, matrixCurrent, weightPrevious, weightCurrent, matrixNew);
 
   // Setting the TransformNode
-  output->SetAndObserveMatrixTransformToParent(matrixNew);
+  output->SetMatrixTransformToParent(matrixNew);
 }
