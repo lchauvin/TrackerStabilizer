@@ -33,13 +33,16 @@
 #include "vtkSlicerModuleLogic.h"
 
 // MRML includes
+#include "vtkMRMLLinearTransformNode.h"
 #include "vtkMRMLScene.h"
+#include "vtkMRMLTrackerStabilizerNode.h"
 
 // STD includes
 #include <cstdlib>
 
 #include "vtkSlicerTrackerStabilizerModuleLogicExport.h"
 
+class vtkMatrix4x4;
 
 /// \ingroup Slicer_QtModules_ExtensionTemplate
 class VTK_SLICER_TRACKERSTABILIZER_MODULE_LOGIC_EXPORT vtkSlicerTrackerStabilizerLogic :
@@ -51,6 +54,10 @@ public:
   vtkTypeMacro(vtkSlicerTrackerStabilizerLogic, vtkSlicerModuleLogic);
   void PrintSelf(ostream& os, vtkIndent indent);
 
+  void ProcessMRMLNodesEvents(vtkObject* caller, unsigned long event, void* callData);
+
+  void Filter(vtkMRMLTrackerStabilizerNode* tsNode);
+
 protected:
   vtkSlicerTrackerStabilizerLogic();
   virtual ~vtkSlicerTrackerStabilizerLogic();
@@ -61,6 +68,12 @@ protected:
   virtual void UpdateFromMRMLScene();
   virtual void OnMRMLSceneNodeAdded(vtkMRMLNode* node);
   virtual void OnMRMLSceneNodeRemoved(vtkMRMLNode* node);
+
+  void Slerp(double* result, double t, double* from, double* to, bool adjustSign = true);
+  void GetInterpolatedTransform(vtkMatrix4x4* itemAmatrix, vtkMatrix4x4* itemBmatrix,
+				double itemAweight, double itemBweight,
+				vtkMatrix4x4* interpolatedMatrix);
+
 private:
 
   vtkSlicerTrackerStabilizerLogic(const vtkSlicerTrackerStabilizerLogic&); // Not implemented

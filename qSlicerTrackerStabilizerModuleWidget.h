@@ -45,11 +45,25 @@ public:
 
 public slots:
 
+  virtual void setMRMLScene( vtkMRMLScene* scene );
+  void onSceneImportedEvent();
+
+protected slots:
+
+  void onModuleNodeChanged();
+
+  void onRefreshTimeout();
+  void onFilteringToggled(bool filter);
+  void onInputNodeChanged();
+  void onOutputNodeChanged();
+  void onCutOffFrequencyChanged(double cutoff);
+  void UpdateFromMRMLNode();
 
 protected:
   QScopedPointer<qSlicerTrackerStabilizerModuleWidgetPrivate> d_ptr;
   
   virtual void setup();
+  virtual void enter();
 
 private:
   Q_DECLARE_PRIVATE(qSlicerTrackerStabilizerModuleWidget);
