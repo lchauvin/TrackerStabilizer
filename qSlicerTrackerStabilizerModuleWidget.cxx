@@ -22,6 +22,7 @@
 
 // Qt includes
 #include <QDebug>
+#include <QMessageBox>
 #include <QTimer>
 
 // SlicerQt includes
@@ -196,7 +197,6 @@ void qSlicerTrackerStabilizerModuleWidget::onRefreshTimeout()
     }
 
   vtkCollection* filteringNodes = this->mrmlScene()->GetNodesByClass("vtkMRMLTrackerStabilizerNode");
-
   for (int i = 0; i < filteringNodes->GetNumberOfItems(); ++i)
     {
     vtkMRMLTrackerStabilizerNode* tsNode = vtkMRMLTrackerStabilizerNode::SafeDownCast(
@@ -206,8 +206,6 @@ void qSlicerTrackerStabilizerModuleWidget::onRefreshTimeout()
       return;
       }
 
-    // TODO: What happen if one output transform has 2 different input through 2 different
-    // vtkMRMLTrackerStabilizerNodes ?
     d->logic()->Filter(tsNode);
     }
 
@@ -263,6 +261,51 @@ void qSlicerTrackerStabilizerModuleWidget::onOutputNodeChanged()
 
   vtkMRMLLinearTransformNode* outputNode = vtkMRMLLinearTransformNode::SafeDownCast(
     d->OutputTransformWidget->currentNode());
+
+  // Sanity check: If the output transform is already selected as output in another filter
+  // with a different input, the output results will be the average of both inputs.
+  // User should be warned in this case.
+
+  bool differentFiltersUsingSameOutput = false;
+  bool useSameOutputForMultipleFilters = false;
+  vtkCollection* filteringNodes = this->mrmlScene()->GetNodesByClass("vtkMRMLTrackerStabilizerNode");
+  for (int i = 0; i < filteringNodes->GetNumberOfItems(); ++i)
+    {
+    vtkMRMLTrackerStabilizerNode* tmpNode = vtkMRMLTrackerStabilizerNode::SafeDownCast(
+      filteringNodes->GetItemAsObject(i));
+    if (tmpNode == NULL)
+      {
+      continue;
+      }
+
+    vtkMRMLLinearTransformNode* filterOutputNode = tmpNode->GetFilteredTransformNode();
+    if (filterOutputNode != NULL && filterOutputNode == outputNode)
+      {
+      // Same output node has been found in another filter in the scene
+      differentFiltersUsingSameOutput = true;
+
+      QMessageBox warningMsg;
+      std::stringstream ss;
+      ss << "Another filter (ID: " << tmpNode->GetID() << ") has been found in the scene with the same output transform. Having two or more filters with the same output will result in the average of all inputs of these filters. Are you sure you want to select this transform as output for this filter ?";
+      warningMsg.setText(ss.str().c_str());
+      warningMsg.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+      warningMsg.setDefaultButton(QMessageBox::No);
+      int ret = warningMsg.exec();
+
+      useSameOutputForMultipleFilters = (ret == QMessageBox::Yes);
+
+      break;
+      }
+    }
+  filteringNodes->Delete();
+
+  if (differentFiltersUsingSameOutput == true && useSameOutputForMultipleFilters == false)
+    {
+    tsNode->SetAndObserveFilteredTransformNodeID("");
+    this->UpdateFromMRMLNode();
+    return;
+    }
+
   tsNode->SetAndObserveFilteredTransformNodeID( (outputNode!=NULL) ? outputNode->GetID() : NULL);
 }
 
