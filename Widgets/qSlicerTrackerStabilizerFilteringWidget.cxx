@@ -137,12 +137,14 @@ void qSlicerTrackerStabilizerFilteringWidget
       }
     else
       {
+      // If InputNode is changed, we set OutputNode to InputNode 
+      // to initialize filtering
       d->InputTransformNode = newTransformNode;
       if (d->OutputTransformNode)
 	{
-	vtkSmartPointer<vtkMatrix4x4> inputMatrix =
+	vtkSmartPointer<vtkMatrix4x4> inputMatrix = 
 	  vtkSmartPointer<vtkMatrix4x4>::New();
-	d->InputTransformNode->GetMatrixTransformToWorld(inputMatrix.GetPointer());
+	d->InputTransformNode->GetMatrixTransformToParent(inputMatrix);  
 	d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
 	}
       }
@@ -219,7 +221,7 @@ void qSlicerTrackerStabilizerFilteringWidget
 
   vtkSmartPointer<vtkMatrix4x4> inputMatrix =
     vtkSmartPointer<vtkMatrix4x4>::New();
-  d->InputTransformNode->GetMatrixTransformToParent(inputMatrix.GetPointer());
+  d->InputTransformNode->GetMatrixTransformToParent(inputMatrix);
   d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
 }
 
@@ -241,7 +243,7 @@ void qSlicerTrackerStabilizerFilteringWidget
       {
       vtkSmartPointer<vtkMatrix4x4> inputMatrix =
 	vtkSmartPointer<vtkMatrix4x4>::New();
-      d->InputTransformNode->GetMatrixTransformToWorld(inputMatrix.GetPointer());
+      d->InputTransformNode->GetMatrixTransformToWorld(inputMatrix);
       d->OutputTransformNode->SetMatrixTransformToParent(inputMatrix);
       }
     }
@@ -313,7 +315,7 @@ void Slerp(double *result, double t, double *from, double *to, bool adjustSign =
 void GetInterpolatedTransform(vtkMatrix4x4* itemAmatrix, vtkMatrix4x4* itemBmatrix, double itemAweight, double itemBweight, vtkMatrix4x4* interpolatedMatrix)
 {
   double itemAweightNormalized=itemAweight/(itemAweight+itemBweight);
-  double itemBweightNormalized=itemBweight/itemAweight;
+  double itemBweightNormalized=itemBweight/(itemAweight+itemBweight);
 
   double matrixA[3][3]={{0,0,0},{0,0,0},{0,0,0}};
   for (int i = 0; i < 3; i++)
@@ -378,5 +380,5 @@ void qSlicerTrackerStabilizerFilteringWidget
   GetInterpolatedTransform(matrixPrevious, matrixCurrent, weightPrevious, weightCurrent, matrixNew);
 
   // Setting the TransformNode
-  output->SetAndObserveMatrixTransformToParent(matrixNew);
+  output->SetMatrixTransformToParent(matrixNew);
 }
