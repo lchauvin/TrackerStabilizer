@@ -21,7 +21,7 @@
 ==============================================================================*/
 
 // Qt includes
-#include <QtPlugin>
+#include <QtGlobal>
 
 // TrackerStabilizer Logic includes
 #include <vtkSlicerTrackerStabilizerLogic.h>
@@ -31,7 +31,10 @@
 #include "qSlicerTrackerStabilizerModuleWidget.h"
 
 //-----------------------------------------------------------------------------
+#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+#include <QtPlugin>
 Q_EXPORT_PLUGIN2(qSlicerTrackerStabilizerModule, qSlicerTrackerStabilizerModule);
+#endif
 
 //-----------------------------------------------------------------------------
 /// \ingroup Slicer_QtModules_ExtensionTemplate
